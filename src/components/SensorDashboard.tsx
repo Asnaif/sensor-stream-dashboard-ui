@@ -1,7 +1,6 @@
-
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { SensorData, ChartPreference } from "@/types";
@@ -19,13 +18,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
+import { useQuery } from "@tanstack/react-query";
 
 const dateRangeOptions = getDateRangeOptions();
 
 const SensorDashboard = () => {
   const [latestData, setLatestData] = useState<SensorData | null>(null);
   const [historicalData, setHistoricalData] = useState<SensorData[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedDateRange, setSelectedDateRange] = useState(dateRangeOptions[2]); // Last 7 days default
   const [expandedChart, setExpandedChart] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -48,13 +47,43 @@ const SensorDashboard = () => {
     air_quality: { min: 0, max: 100 }
   };
 
+  // Query to fetch all sensor data
+  const { data: allSensorData, isLoading: isAllDataLoading } = useQuery({
+    queryKey: ['allSensorData'],
+    queryFn: async () => {
+      const response = await sensorApi.getAll();
+      if (!response.success || !response.data) {
+        throw new Error('Failed to fetch all sensor data');
+      }
+      return response.data;
+    },
+    refetchInterval: 10000, // Refetch every 10 seconds for real-time updates
+    onSuccess: (data) => {
+      console.log('Fetched all sensor data:', data.length, 'records');
+      if (data.length > 0) {
+        // Set latest data
+        setLatestData(data[data.length - 1]);
+        
+        // Keep historical data updated
+        setHistoricalData(data);
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "Data fetch error",
+        description: (error as Error).message || "Failed to fetch all sensor data",
+        variant: "destructive"
+      });
+    }
+  });
+
   // Connect to socket service for real-time updates
   useEffect(() => {
     socketService.connect();
     
     const unsubscribe = socketService.onSensorUpdate((data) => {
       setLatestData(data);
-      setHistoricalData(prev => [...prev, data].slice(-100)); // Keep last 100 records in memory
+      setHistoricalData(prev => [...prev, data].slice(-100)); // Add new data to historical data
     });
     
     return () => {
@@ -62,41 +91,6 @@ const SensorDashboard = () => {
       socketService.disconnect();
     };
   }, []);
-
-  // Fetch initial data
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      
-      try {
-        // Get latest sensor reading
-        const latestResponse = await sensorApi.getLatest();
-        if (latestResponse.success && latestResponse.data) {
-          setLatestData(latestResponse.data);
-        }
-        
-        // Get filtered historical data
-        const filteredResponse = await sensorApi.getFiltered(
-          selectedDateRange.start,
-          selectedDateRange.end
-        );
-        
-        if (filteredResponse.success && filteredResponse.data) {
-          setHistoricalData(filteredResponse.data);
-        }
-      } catch (error) {
-        toast({
-          title: "Data fetch error",
-          description: (error as Error).message || "Failed to fetch sensor data",
-          variant: "destructive"
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    fetchData();
-  }, [selectedDateRange, toast]);
 
   // Handle custom date range selection
   useEffect(() => {
@@ -127,6 +121,21 @@ const SensorDashboard = () => {
       setEndDate(new Date(selectedOption.end));
     }
   };
+
+  // Filter data based on selected date range
+  const getFilteredData = () => {
+    if (!historicalData.length) return [];
+    
+    const startTimestamp = new Date(selectedDateRange.start).getTime();
+    const endTimestamp = new Date(selectedDateRange.end).getTime();
+    
+    return historicalData.filter(item => {
+      const itemTimestamp = new Date(item.timestamp as string).getTime();
+      return itemTimestamp >= startTimestamp && itemTimestamp <= endTimestamp;
+    });
+  };
+
+  const filteredData = getFilteredData();
 
   const toggleExpandChart = (chartId: string) => {
     setExpandedChart(expandedChart === chartId ? null : chartId);
@@ -191,6 +200,8 @@ const SensorDashboard = () => {
     };
   };
 
+  const isLoading = isAllDataLoading && historicalData.length === 0;
+
   return (
     <div className="container py-6 space-y-6">
       <Card>
@@ -200,6 +211,11 @@ const SensorDashboard = () => {
               <CardTitle>Sensor Monitoring</CardTitle>
               <CardDescription>
                 Real-time and historical sensor data visualization
+                {!isLoading && allSensorData && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    ({allSensorData.length} records)
+                  </span>
+                )}
               </CardDescription>
             </div>
             
@@ -298,7 +314,7 @@ const SensorDashboard = () => {
                 <div className={`grid gap-4 ${preferences.viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
                   <SensorChart
                     title="Temperature"
-                    data={historicalData}
+                    data={filteredData}
                     dataKey="temperature"
                     color="#3a86ff"
                     unit="°C"
@@ -309,7 +325,7 @@ const SensorDashboard = () => {
                   
                   <SensorChart
                     title="Humidity"
-                    data={historicalData}
+                    data={filteredData}
                     dataKey="humidity"
                     color="#8338ec"
                     unit="%"
@@ -320,7 +336,7 @@ const SensorDashboard = () => {
                   
                   <SensorChart
                     title="Air Quality"
-                    data={historicalData}
+                    data={filteredData}
                     dataKey="air_quality"
                     color="#ef476f"
                     unit="AQI"
@@ -333,7 +349,7 @@ const SensorDashboard = () => {
             </TabsContent>
             
             <TabsContent value="table">
-              <SensorDataTable data={historicalData} />
+              <SensorDataTable data={filteredData} />
             </TabsContent>
           </Tabs>
         </CardContent>
