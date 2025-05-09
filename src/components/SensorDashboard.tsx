@@ -47,7 +47,7 @@ const SensorDashboard = () => {
     air_quality: { min: 0, max: 100 }
   };
 
-  // Query to fetch all sensor data
+  // Query to fetch all sensor data - fixed to use proper React Query v5 format
   const { data: allSensorData, isLoading: isAllDataLoading } = useQuery({
     queryKey: ['allSensorData'],
     queryFn: async () => {
@@ -58,24 +58,28 @@ const SensorDashboard = () => {
       return response.data;
     },
     refetchInterval: 10000, // Refetch every 10 seconds for real-time updates
-    onSuccess: (data) => {
-      console.log('Fetched all sensor data:', data.length, 'records');
-      if (data.length > 0) {
-        // Set latest data
-        setLatestData(data[data.length - 1]);
-        
-        // Keep historical data updated
-        setHistoricalData(data);
+    meta: {
+      onError: (error: Error) => {
+        toast({
+          title: "Data fetch error",
+          description: error.message || "Failed to fetch all sensor data",
+          variant: "destructive"
+        });
       }
-    },
-    onError: (error) => {
-      toast({
-        title: "Data fetch error",
-        description: (error as Error).message || "Failed to fetch all sensor data",
-        variant: "destructive"
-      });
     }
   });
+
+  // Update state when data is fetched
+  useEffect(() => {
+    if (allSensorData && allSensorData.length > 0) {
+      console.log('Fetched all sensor data:', allSensorData.length, 'records');
+      // Set latest data
+      setLatestData(allSensorData[allSensorData.length - 1]);
+      
+      // Keep historical data updated
+      setHistoricalData(allSensorData);
+    }
+  }, [allSensorData]);
 
   // Connect to socket service for real-time updates
   useEffect(() => {
