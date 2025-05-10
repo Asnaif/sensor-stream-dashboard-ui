@@ -9,7 +9,7 @@ async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const error = await response.json();
-        return { success: false, error: error.message || 'An error occurred' };
+        return { success: false, error: error.message || error.error || 'An error occurred' };
       } else {
         // Handle text responses for non-JSON errors
         const errorText = await response.text();
@@ -26,16 +26,27 @@ async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
       return { success: true, data };
-    } else if (response.headers.get('content-type')?.includes('application/octet-stream')) {
+    } else if (contentType && contentType.includes('application/octet-stream')) {
       // For binary responses like firmware files
       const blob = await response.blob();
       return { success: true, data: blob as unknown as T };
     } else {
       // For text responses
       const text = await response.text();
-      return { success: true, data: text as unknown as T, message: text };
+      if (text) {
+        try {
+          // Try to parse as JSON in case content-type header is incorrect
+          const jsonData = JSON.parse(text);
+          return { success: true, data: jsonData as T };
+        } catch {
+          // If not valid JSON, return as text
+          return { success: true, data: text as unknown as T, message: text };
+        }
+      }
+      return { success: true, data: null as unknown as T };
     }
   } catch (e) {
+    console.error('Error parsing response:', e);
     return { success: false, error: 'Invalid response format from server' };
   }
 }
@@ -131,7 +142,10 @@ export const firmwareApi = {
       const formData = new FormData();
       formData.append('firmware', file);
       
-      const response = await fetch(`${API_URL}/api/firmware/upload`, {
+      console.log('Uploading firmware file:', file.name, file.size);
+      
+      // Fix: Use correct API endpoint with '/firmware' instead of '/api/firmware'
+      const response = await fetch(`${API_URL}/firmware/upload`, {
         method: 'POST',
         headers: {
           'X-Firmware-Password': password
@@ -139,16 +153,22 @@ export const firmwareApi = {
         body: formData
       });
       
+      console.log('Upload response status:', response.status, response.statusText);
+      
       // Use the improved handleResponse function
-      return handleResponse<{ message: string }>(response);
+      const result = await handleResponse<{ message: string }>(response);
+      console.log('Parsed upload response:', result);
+      return result;
     } catch (error) {
+      console.error('Firmware upload error:', error);
       return { success: false, error: (error as Error).message };
     }
   },
   
   getLatestFirmware: async (): Promise<ApiResponse<Blob>> => {
     try {
-      const response = await fetch(`${API_URL}/api/firmware/latest`);
+      // Fix: Use correct API endpoint with '/firmware' instead of '/api/firmware'
+      const response = await fetch(`${API_URL}/firmware/latest`);
       return handleResponse<Blob>(response);
     } catch (error) {
       return { success: false, error: (error as Error).message };
