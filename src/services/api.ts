@@ -1,4 +1,3 @@
-
 import { SensorData, AuthCredentials, AuthResponse, ApiResponse } from '@/types';
 
 const API_URL = 'https://bright-aliza-asnaif-bfedfd0f.koyeb.app';
@@ -7,17 +6,35 @@ const API_URL = 'https://bright-aliza-asnaif-bfedfd0f.koyeb.app';
 async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
   if (!response.ok) {
     try {
-      const error = await response.json();
-      return { success: false, error: error.message || 'An error occurred' };
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const error = await response.json();
+        return { success: false, error: error.message || 'An error occurred' };
+      } else {
+        // Handle text responses for non-JSON errors
+        const errorText = await response.text();
+        return { success: false, error: errorText || `Server error: ${response.status} ${response.statusText}` };
+      }
     } catch (e) {
-      // If JSON parsing fails, return the status text
+      // If parsing fails, return the status text
       return { success: false, error: `Server error: ${response.status} ${response.statusText}` };
     }
   }
   
   try {
-    const data = await response.json();
-    return { success: true, data };
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return { success: true, data };
+    } else if (response.headers.get('content-type')?.includes('application/octet-stream')) {
+      // For binary responses like firmware files
+      const blob = await response.blob();
+      return { success: true, data: blob as unknown as T };
+    } else {
+      // For text responses
+      const text = await response.text();
+      return { success: true, data: text as unknown as T, message: text };
+    }
   } catch (e) {
     return { success: false, error: 'Invalid response format from server' };
   }
@@ -122,27 +139,8 @@ export const firmwareApi = {
         body: formData
       });
       
-      if (!response.ok) {
-        try {
-          const errorData = await response.json();
-          return { success: false, error: errorData.message || 'Upload failed' };
-        } catch (jsonError) {
-          // If JSON parsing fails, try to get the text content
-          const textContent = await response.text();
-          return { 
-            success: false, 
-            error: textContent || `Server error: ${response.status} ${response.statusText}` 
-          };
-        }
-      }
-      
-      try {
-        const data = await response.json();
-        return { success: true, data, message: data.message || 'Firmware uploaded successfully' };
-      } catch (jsonError) {
-        // If successful but JSON parsing fails, still consider it a success
-        return { success: true, message: 'Firmware uploaded successfully' };
-      }
+      // Use the improved handleResponse function
+      return handleResponse<{ message: string }>(response);
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
@@ -151,21 +149,7 @@ export const firmwareApi = {
   getLatestFirmware: async (): Promise<ApiResponse<Blob>> => {
     try {
       const response = await fetch(`${API_URL}/api/firmware/latest`);
-      
-      if (!response.ok) {
-        try {
-          const error = await response.json();
-          return { success: false, error: error.message || 'Failed to fetch firmware' };
-        } catch (jsonError) {
-          return { 
-            success: false, 
-            error: `Server error: ${response.status} ${response.statusText}` 
-          };
-        }
-      }
-      
-      const blob = await response.blob();
-      return { success: true, data: blob };
+      return handleResponse<Blob>(response);
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }

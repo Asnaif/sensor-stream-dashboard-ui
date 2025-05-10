@@ -17,7 +17,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
   const [isUploading, setIsUploading] = useState(false);
-  const [latestFileUrl, setLatestFileUrl] = useState<string>("");
+  const [isFetching, setIsFetching] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -82,15 +82,16 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
   };
 
   const handleFetchLatest = async () => {
-    setIsUploading(true);
+    setIsFetching(true);
     setUploadError(null);
     try {
       const response = await firmwareApi.getLatestFirmware();
       
       if (response.success && response.data) {
         const url = URL.createObjectURL(response.data);
-        setLatestFileUrl(url);
-        setFile(new File([response.data], `firmware_${new Date().toISOString().split('T')[0]}.bin`, { type: 'application/octet-stream' }));
+        const filename = `firmware_${new Date().toISOString().split('T')[0]}.bin`;
+        
+        setFile(new File([response.data], filename, { type: 'application/octet-stream' }));
         
         toast({
           title: "Latest firmware fetched",
@@ -115,7 +116,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
         variant: "destructive"
       });
     } finally {
-      setIsUploading(false);
+      setIsFetching(false);
     }
   };
 
@@ -123,7 +124,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
     <div className="space-y-4">
       {uploadError && (
         <Alert variant="destructive">
-          <AlertTitle>Upload error</AlertTitle>
+          <AlertTitle>Error</AlertTitle>
           <AlertDescription>{uploadError}</AlertDescription>
         </Alert>
       )}
@@ -144,6 +145,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
                 accept=".bin"
                 onChange={handleFileChange}
                 className="flex-1"
+                disabled={isUploading}
               />
             </div>
           </div>
@@ -157,9 +159,9 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
                 variant="outline" 
                 className="flex-1"
                 onClick={handleFetchLatest}
-                disabled={isUploading}
+                disabled={isUploading || isFetching}
               >
-                {isUploading ? (
+                {isFetching ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Fetching...
@@ -184,6 +186,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Enter firmware password"
+          disabled={isUploading}
         />
       </div>
 
@@ -201,7 +204,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
 
       <Button 
         onClick={handleUpload} 
-        disabled={!file || !password || isUploading}
+        disabled={!file || !password || isUploading || isFetching}
         className="w-full"
       >
         {isUploading ? (
