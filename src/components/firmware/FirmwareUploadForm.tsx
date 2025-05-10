@@ -7,6 +7,7 @@ import { Upload, Loader2, Check, FileUp } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { firmwareApi } from "@/services/api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 interface FirmwareUploadFormProps {
   onUploadSuccess: () => void;
@@ -17,6 +18,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
   const [password, setPassword] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [latestFileUrl, setLatestFileUrl] = useState<string>("");
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const { toast } = useToast();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,6 +36,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
       }
       
       setFile(selectedFile);
+      setUploadError(null);
     }
   };
 
@@ -41,6 +44,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
     if (!file || !password) return;
     
     setIsUploading(true);
+    setUploadError(null);
     
     try {
       const response = await firmwareApi.uploadFirmware(file, password);
@@ -57,6 +61,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
         setPassword("");
         onUploadSuccess();
       } else {
+        setUploadError(response.error || "Failed to upload firmware");
         toast({
           title: "Upload failed",
           description: response.error || "Failed to upload firmware",
@@ -64,9 +69,11 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
         });
       }
     } catch (error) {
+      const errorMessage = (error as Error).message || "An unexpected error occurred";
+      setUploadError(errorMessage);
       toast({
         title: "Upload error",
-        description: (error as Error).message || "An unexpected error occurred",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
@@ -76,6 +83,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
 
   const handleFetchLatest = async () => {
     setIsUploading(true);
+    setUploadError(null);
     try {
       const response = await firmwareApi.getLatestFirmware();
       
@@ -90,16 +98,20 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
           variant: "default"
         });
       } else {
+        const errorMessage = response.error || "Failed to fetch latest firmware";
+        setUploadError(errorMessage);
         toast({
           title: "Fetch failed",
-          description: response.error || "Failed to fetch latest firmware",
+          description: errorMessage,
           variant: "destructive"
         });
       }
     } catch (error) {
+      const errorMessage = (error as Error).message || "An unexpected error occurred";
+      setUploadError(errorMessage);
       toast({
         title: "Error fetching firmware",
-        description: (error as Error).message || "An unexpected error occurred",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
@@ -109,6 +121,13 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
 
   return (
     <div className="space-y-4">
+      {uploadError && (
+        <Alert variant="destructive">
+          <AlertTitle>Upload error</AlertTitle>
+          <AlertDescription>{uploadError}</AlertDescription>
+        </Alert>
+      )}
+
       <Tabs defaultValue="local" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="local">Upload Local File</TabsTrigger>

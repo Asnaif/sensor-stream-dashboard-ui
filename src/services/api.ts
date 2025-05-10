@@ -6,11 +6,21 @@ const API_URL = 'https://bright-aliza-asnaif-bfedfd0f.koyeb.app';
 // Helper function to handle API responses
 async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
   if (!response.ok) {
-    const error = await response.json();
-    return { success: false, error: error.message || 'An error occurred' };
+    try {
+      const error = await response.json();
+      return { success: false, error: error.message || 'An error occurred' };
+    } catch (e) {
+      // If JSON parsing fails, return the status text
+      return { success: false, error: `Server error: ${response.status} ${response.statusText}` };
+    }
   }
-  const data = await response.json();
-  return { success: true, data };
+  
+  try {
+    const data = await response.json();
+    return { success: true, data };
+  } catch (e) {
+    return { success: false, error: 'Invalid response format from server' };
+  }
 }
 
 // Sensor data API calls
@@ -112,7 +122,27 @@ export const firmwareApi = {
         body: formData
       });
       
-      return handleResponse<{ message: string }>(response);
+      if (!response.ok) {
+        try {
+          const errorData = await response.json();
+          return { success: false, error: errorData.message || 'Upload failed' };
+        } catch (jsonError) {
+          // If JSON parsing fails, try to get the text content
+          const textContent = await response.text();
+          return { 
+            success: false, 
+            error: textContent || `Server error: ${response.status} ${response.statusText}` 
+          };
+        }
+      }
+      
+      try {
+        const data = await response.json();
+        return { success: true, data, message: data.message || 'Firmware uploaded successfully' };
+      } catch (jsonError) {
+        // If successful but JSON parsing fails, still consider it a success
+        return { success: true, message: 'Firmware uploaded successfully' };
+      }
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
@@ -123,8 +153,15 @@ export const firmwareApi = {
       const response = await fetch(`${API_URL}/api/firmware/latest`);
       
       if (!response.ok) {
-        const error = await response.json();
-        return { success: false, error: error.message || 'Failed to fetch firmware' };
+        try {
+          const error = await response.json();
+          return { success: false, error: error.message || 'Failed to fetch firmware' };
+        } catch (jsonError) {
+          return { 
+            success: false, 
+            error: `Server error: ${response.status} ${response.statusText}` 
+          };
+        }
       }
       
       const blob = await response.blob();
