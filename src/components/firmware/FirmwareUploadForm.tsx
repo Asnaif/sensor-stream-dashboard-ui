@@ -3,9 +3,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Upload, Loader2, Check } from "lucide-react";
+import { Upload, Loader2, Check, FileUp } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { firmwareApi } from "@/services/api";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface FirmwareUploadFormProps {
   onUploadSuccess: () => void;
@@ -15,6 +16,7 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [latestFileUrl, setLatestFileUrl] = useState<string>("");
   const { toast } = useToast();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,37 +74,88 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
     }
   };
 
+  const handleFetchLatest = async () => {
+    setIsUploading(true);
+    try {
+      const response = await firmwareApi.getLatestFirmware();
+      
+      if (response.success && response.data) {
+        const url = URL.createObjectURL(response.data);
+        setLatestFileUrl(url);
+        setFile(new File([response.data], `firmware_${new Date().toISOString().split('T')[0]}.bin`, { type: 'application/octet-stream' }));
+        
+        toast({
+          title: "Latest firmware fetched",
+          description: "The latest firmware file is ready to upload",
+          variant: "default"
+        });
+      } else {
+        toast({
+          title: "Fetch failed",
+          description: response.error || "Failed to fetch latest firmware",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error fetching firmware",
+        description: (error as Error).message || "An unexpected error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="firmware">Firmware File (.bin)</Label>
-        <div className="flex gap-2">
-          <Input
-            id="firmware"
-            type="file"
-            accept=".bin"
-            onChange={handleFileChange}
-            className="flex-1"
-          />
-          <Button 
-            onClick={handleUpload} 
-            disabled={!file || !password || isUploading}
-            className="whitespace-nowrap"
-          >
-            {isUploading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              <>
-                <Upload className="mr-2 h-4 w-4" />
-                Upload
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
+      <Tabs defaultValue="local" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="local">Upload Local File</TabsTrigger>
+          <TabsTrigger value="latest">Use Latest Version</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="local" className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="firmware">Firmware File (.bin)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="firmware"
+                type="file"
+                accept=".bin"
+                onChange={handleFileChange}
+                className="flex-1"
+              />
+            </div>
+          </div>
+        </TabsContent>
+        
+        <TabsContent value="latest" className="space-y-4">
+          <div className="space-y-2">
+            <Label>Latest Firmware</Label>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                className="flex-1"
+                onClick={handleFetchLatest}
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Fetching...
+                  </>
+                ) : (
+                  <>
+                    <FileUp className="mr-2 h-4 w-4" />
+                    Fetch Latest Firmware
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <div className="space-y-2">
         <Label htmlFor="password">Firmware Password</Label>
@@ -126,6 +179,24 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
           </div>
         </div>
       )}
+
+      <Button 
+        onClick={handleUpload} 
+        disabled={!file || !password || isUploading}
+        className="w-full"
+      >
+        {isUploading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Uploading...
+          </>
+        ) : (
+          <>
+            <Upload className="mr-2 h-4 w-4" />
+            Upload Firmware
+          </>
+        )}
+      </Button>
     </div>
   );
 };
