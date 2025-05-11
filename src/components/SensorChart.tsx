@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Maximize2, Minimize2, Download } from "lucide-react";
 import { downsampleData, calculateStatistics } from "@/workers/dataWorker";
-import { sensorApi } from "@/services/api";
 
 interface SensorChartProps {
   title: string;
@@ -43,32 +42,7 @@ const SensorChart = ({
 }: SensorChartProps) => {
   const [chartData, setChartData] = useState<any[]>([]);
   const [stats, setStats] = useState({ min: 0, max: 0, avg: 0 });
-  const [latestSensorData, setLatestSensorData] = useState<SensorData | null>(null);
   const chartRef = useRef(null);
-  
-  // Fetch the latest data regularly
-  useEffect(() => {
-    // Initial fetch
-    fetchLatestData();
-    
-    // Set up interval for fetching
-    const intervalId = setInterval(fetchLatestData, 5000);
-    
-    // Clean up the interval when component unmounts
-    return () => clearInterval(intervalId);
-  }, []);
-  
-  const fetchLatestData = async () => {
-    try {
-      const response = await sensorApi.getLatest();
-      if (response.success && response.data) {
-        setLatestSensorData(response.data);
-        console.log("Latest real-time sensor data fetched:", response.data);
-      }
-    } catch (error) {
-      console.error("Error fetching latest sensor data:", error);
-    }
-  };
 
   useEffect(() => {
     if (data.length === 0) return;
@@ -96,10 +70,10 @@ const SensorChart = ({
     alert("Chart export functionality would go here");
   };
 
-  // Get the latest value - prioritize the real-time data if available
-  const latestValue = latestSensorData ? 
-    latestSensorData[dataKey] : 
-    (data.length > 0 ? data[data.length - 1][dataKey] : 0);
+  // Get the latest value directly from the latest data point
+  const latestValue = data.length > 0 
+    ? data[data.length - 1][dataKey] 
+    : 0;
     
   // Format the value to handle potential precision issues
   const formattedLatestValue = typeof latestValue === 'number' 
@@ -123,11 +97,6 @@ const SensorChart = ({
               {formattedLatestValue}
             </span>
             <span className="ml-1">{unit}</span>
-            {latestSensorData && 
-              <span className="text-xs ml-2 text-muted-foreground">
-                (Live)
-              </span>
-            }
           </div>
           {threshold && (
             <Badge variant={
