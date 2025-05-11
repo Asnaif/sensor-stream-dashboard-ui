@@ -12,11 +12,27 @@ class SocketService {
   connect(): void {
     if (this.socket) return;
     
-    // Currently mocked - would connect to the actual server in production
-    console.log('Socket service connecting...');
+    console.log('Socket service connecting to real server...');
     
-    // Mock socket events for development (would use real socket in production)
-    this.mockSocketEvents();
+    try {
+      this.socket = io(SOCKET_URL);
+      
+      this.socket.on('connect', () => {
+        console.log('Socket connected successfully');
+      });
+      
+      this.socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+      });
+      
+      this.socket.on('sensor_data', (data: SensorData) => {
+        console.log('Received real-time sensor data:', data);
+        const listeners = this.listeners.get('sensor_update') || [];
+        listeners.forEach(callback => callback(data));
+      });
+    } catch (error) {
+      console.error('Error initializing socket:', error);
+    }
   }
 
   // Disconnect socket
@@ -60,26 +76,6 @@ class SocketService {
       eventListeners.splice(index, 1);
       this.listeners.set(event, eventListeners);
     }
-  }
-
-  // Mock socket events for development
-  private mockSocketEvents(): void {
-    console.log('Setting up mock socket events');
-    
-    // Generate random sensor data every few seconds
-    setInterval(() => {
-      const mockData: SensorData = {
-        _id: Math.random().toString(36).substring(2, 15),
-        timestamp: new Date().toISOString(),
-        temperature: 20 + Math.random() * 10, // 20-30°C
-        humidity: 40 + Math.random() * 30, // 40-70%
-        air_quality: 50 + Math.random() * 150 // 50-200 (higher is worse)
-      };
-      
-      // Emit to all listeners
-      const listeners = this.listeners.get('sensor_update') || [];
-      listeners.forEach(callback => callback(mockData));
-    }, 5000); // Every 5 seconds
   }
 }
 

@@ -1,3 +1,4 @@
+
 import { SensorData, AuthCredentials, AuthResponse, ApiResponse } from '@/types';
 
 const API_URL = 'https://bright-aliza-asnaif-bfedfd0f.koyeb.app';
@@ -53,12 +54,15 @@ async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
 
 // Sensor data API calls
 export const sensorApi = {
-  // Get latest sensor data
+  // Get latest sensor data - using the correct endpoint for real-time data
   getLatest: async (): Promise<ApiResponse<SensorData>> => {
     try {
+      console.log('Fetching latest sensor data from API');
       const response = await fetch(`${API_URL}/api/sensors`);
+      console.log('Latest sensor data response status:', response.status);
       return handleResponse<SensorData>(response);
     } catch (error) {
+      console.error('Error fetching latest sensor data:', error);
       return { success: false, error: (error as Error).message };
     }
   },
@@ -66,19 +70,25 @@ export const sensorApi = {
   // Get filtered sensor data by date range
   getFiltered: async (startDate: string, endDate: string): Promise<ApiResponse<SensorData[]>> => {
     try {
+      console.log(`Fetching filtered sensor data from ${startDate} to ${endDate}`);
       const response = await fetch(`${API_URL}/api/sensors/filter?start=${startDate}&end=${endDate}`);
+      console.log('Filtered sensor data response status:', response.status);
       return handleResponse<SensorData[]>(response);
     } catch (error) {
+      console.error('Error fetching filtered sensor data:', error);
       return { success: false, error: (error as Error).message };
     }
   },
 
-  // Get all sensor data
+  // Get all sensor data - using the correct endpoint for historical data
   getAll: async (): Promise<ApiResponse<SensorData[]>> => {
     try {
+      console.log('Fetching all sensor data from API');
       const response = await fetch(`${API_URL}/api/sensors/all`);
+      console.log('All sensor data response status:', response.status);
       return handleResponse<SensorData[]>(response);
     } catch (error) {
+      console.error('Error fetching all sensor data:', error);
       return { success: false, error: (error as Error).message };
     }
   },
@@ -144,7 +154,6 @@ export const firmwareApi = {
       
       console.log('Uploading firmware file:', file.name, file.size);
       
-      // Fix: Use correct API endpoint with '/firmware' instead of '/api/firmware'
       const response = await fetch(`${API_URL}/firmware/upload`, {
         method: 'POST',
         headers: {
@@ -167,7 +176,6 @@ export const firmwareApi = {
   
   getLatestFirmware: async (): Promise<ApiResponse<Blob>> => {
     try {
-      // Fix: Use correct API endpoint with '/firmware' instead of '/api/firmware'
       const response = await fetch(`${API_URL}/firmware/latest`);
       return handleResponse<Blob>(response);
     } catch (error) {

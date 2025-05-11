@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -47,7 +48,29 @@ const SensorDashboard = () => {
     air_quality: { min: 0, max: 100 }
   };
 
-  // Query to fetch all sensor data - fixed to use proper React Query v5 format
+  // Query to fetch latest sensor data
+  const { data: latestSensorData, isLoading: isLatestDataLoading } = useQuery({
+    queryKey: ['latestSensorData'],
+    queryFn: async () => {
+      const response = await sensorApi.getLatest();
+      if (!response.success || !response.data) {
+        throw new Error('Failed to fetch latest sensor data');
+      }
+      return response.data;
+    },
+    refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
+    meta: {
+      onError: (error: Error) => {
+        toast({
+          title: "Latest data fetch error",
+          description: error.message || "Failed to fetch latest sensor data",
+          variant: "destructive"
+        });
+      }
+    }
+  });
+
+  // Query to fetch all sensor data for historical view
   const { data: allSensorData, isLoading: isAllDataLoading } = useQuery({
     queryKey: ['allSensorData'],
     queryFn: async () => {
@@ -55,13 +78,14 @@ const SensorDashboard = () => {
       if (!response.success || !response.data) {
         throw new Error('Failed to fetch all sensor data');
       }
+      console.log('Fetched all sensor data from API:', response.data.length, 'records');
       return response.data;
     },
-    refetchInterval: 10000, // Refetch every 10 seconds for real-time updates
+    refetchInterval: 30000, // Refetch every 30 seconds for historical data updates
     meta: {
       onError: (error: Error) => {
         toast({
-          title: "Data fetch error",
+          title: "Historical data fetch error",
           description: error.message || "Failed to fetch all sensor data",
           variant: "destructive"
         });
@@ -71,12 +95,15 @@ const SensorDashboard = () => {
 
   // Update state when data is fetched
   useEffect(() => {
+    if (latestSensorData) {
+      console.log('Latest sensor data updated:', latestSensorData);
+      setLatestData(latestSensorData);
+    }
+  }, [latestSensorData]);
+  
+  useEffect(() => {
     if (allSensorData && allSensorData.length > 0) {
-      console.log('Fetched all sensor data:', allSensorData.length, 'records');
-      // Set latest data
-      setLatestData(allSensorData[allSensorData.length - 1]);
-      
-      // Keep historical data updated
+      console.log('Historical sensor data updated with', allSensorData.length, 'records');
       setHistoricalData(allSensorData);
     }
   }, [allSensorData]);
@@ -86,8 +113,18 @@ const SensorDashboard = () => {
     socketService.connect();
     
     const unsubscribe = socketService.onSensorUpdate((data) => {
+      console.log('Socket received real-time data update:', data);
       setLatestData(data);
-      setHistoricalData(prev => [...prev, data].slice(-100)); // Add new data to historical data
+      
+      // Add new data to historical data (to avoid having to refetch the full dataset)
+      setHistoricalData(prev => {
+        // Check if this data is already in our historical dataset to avoid duplicates
+        const exists = prev.some(item => item._id === data._id);
+        if (!exists) {
+          return [...prev, data];
+        }
+        return prev;
+      });
     });
     
     return () => {
@@ -204,7 +241,7 @@ const SensorDashboard = () => {
     };
   };
 
-  const isLoading = isAllDataLoading && historicalData.length === 0;
+  const isLoading = isLatestDataLoading && isAllDataLoading && historicalData.length === 0;
 
   return (
     <div className="container py-6 space-y-6">
@@ -215,9 +252,9 @@ const SensorDashboard = () => {
               <CardTitle>Sensor Monitoring</CardTitle>
               <CardDescription>
                 Real-time and historical sensor data visualization
-                {!isLoading && allSensorData && (
+                {!isLoading && historicalData && (
                   <span className="ml-2 text-xs text-muted-foreground">
-                    ({allSensorData.length} records)
+                    ({historicalData.length} records)
                   </span>
                 )}
               </CardDescription>
