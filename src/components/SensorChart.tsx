@@ -70,8 +70,15 @@ const SensorChart = ({
     alert("Chart export functionality would go here");
   };
 
-  // Get the latest value
-  const latestValue = data.length > 0 ? data[data.length - 1][dataKey] : 0;
+  // Get the latest value directly from the latest data point
+  const latestValue = data.length > 0 
+    ? data[data.length - 1][dataKey] 
+    : 0;
+    
+  // Format the value to handle potential precision issues
+  const formattedLatestValue = typeof latestValue === 'number' 
+    ? latestValue.toFixed(1) 
+    : '0.0';
 
   return (
     <Card className={`chart-container ${isExpanded ? 'col-span-2 row-span-2' : ''}`}>
@@ -86,16 +93,21 @@ const SensorChart = ({
         </div>
         <div className="flex items-center justify-between mt-1">
           <div>
-            <span className="sensor-value" style={{ color }}>
-              {latestValue.toFixed(1)}
+            <span className="sensor-value text-lg font-bold" style={{ color }}>
+              {formattedLatestValue}
             </span>
             <span className="ml-1">{unit}</span>
           </div>
           {threshold && (
-            <Badge variant={latestValue > threshold.max || latestValue < threshold.min ? "destructive" : "secondary"}>
-              {latestValue > threshold.max
+            <Badge variant={
+              parseFloat(formattedLatestValue) > threshold.max || 
+              parseFloat(formattedLatestValue) < threshold.min 
+                ? "destructive" 
+                : "secondary"
+            }>
+              {parseFloat(formattedLatestValue) > threshold.max
                 ? "Above threshold"
-                : latestValue < threshold.min
+                : parseFloat(formattedLatestValue) < threshold.min
                 ? "Below threshold"
                 : "Normal"}
             </Badge>
