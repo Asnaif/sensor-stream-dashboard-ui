@@ -154,7 +154,8 @@ export const firmwareApi = {
       
       console.log('Uploading firmware file:', file.name, file.size);
       
-      const response = await fetch(`${API_URL}/firmware/upload`, {
+      // Fix the endpoint URL - change from '/firmware/upload' to '/api/firmware/upload'
+      const response = await fetch(`${API_URL}/api/firmware/upload`, {
         method: 'POST',
         headers: {
           'X-Firmware-Password': password
@@ -176,7 +177,8 @@ export const firmwareApi = {
   
   getLatestFirmware: async (): Promise<ApiResponse<Blob>> => {
     try {
-      const response = await fetch(`${API_URL}/firmware/latest`);
+      // Also update this endpoint to be consistent
+      const response = await fetch(`${API_URL}/api/firmware/latest`);
       return handleResponse<Blob>(response);
     } catch (error) {
       return { success: false, error: (error as Error).message };

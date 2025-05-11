@@ -47,7 +47,9 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
     setUploadError(null);
     
     try {
+      console.log('Starting firmware upload...');
       const response = await firmwareApi.uploadFirmware(file, password);
+      console.log('Upload response received:', response);
       
       if (response.success) {
         toast({
@@ -61,15 +63,18 @@ const FirmwareUploadForm = ({ onUploadSuccess }: FirmwareUploadFormProps) => {
         setPassword("");
         onUploadSuccess();
       } else {
-        setUploadError(response.error || "Failed to upload firmware");
+        const errorMsg = response.error || "Failed to upload firmware";
+        console.error('Upload failed:', errorMsg);
+        setUploadError(errorMsg);
         toast({
           title: "Upload failed",
-          description: response.error || "Failed to upload firmware",
+          description: errorMsg,
           variant: "destructive"
         });
       }
     } catch (error) {
       const errorMessage = (error as Error).message || "An unexpected error occurred";
+      console.error('Upload exception:', errorMessage);
       setUploadError(errorMessage);
       toast({
         title: "Upload error",
