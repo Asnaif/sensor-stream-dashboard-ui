@@ -1,13 +1,13 @@
-
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { SensorData, ChartPreference } from "@/types";
 import { sensorApi } from "@/services/api";
 import socketService from "@/services/socket";
 import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { getDateRangeOptions, formatDateISO } from "@/utils/datetime";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePreferences } from "@/contexts/PreferencesContext";
@@ -37,7 +37,7 @@ const SensorDashboard = () => {
   );
   const [chartType, setChartType] = useState<'line' | 'bar' | 'area'>('line');
   
-  const { toast } = useToast();
+  const { toast: uiToast } = useToast();
   const { isAuthenticated } = useAuth();
   const { preferences } = usePreferences();
 
@@ -61,11 +61,7 @@ const SensorDashboard = () => {
     refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
     meta: {
       onError: (error: Error) => {
-        toast({
-          title: "Latest data fetch error",
-          description: error.message || "Failed to fetch latest sensor data",
-          variant: "destructive"
-        });
+        toast.error(`Failed to fetch latest sensor data: ${error.message}`);
       }
     }
   });
@@ -84,11 +80,7 @@ const SensorDashboard = () => {
     refetchInterval: 30000, // Refetch every 30 seconds for historical data updates
     meta: {
       onError: (error: Error) => {
-        toast({
-          title: "Historical data fetch error",
-          description: error.message || "Failed to fetch all sensor data",
-          variant: "destructive"
-        });
+        toast.error(`Failed to fetch historical sensor data: ${error.message}`);
       }
     }
   });
@@ -98,6 +90,10 @@ const SensorDashboard = () => {
     if (latestSensorData) {
       console.log('Latest sensor data updated:', latestSensorData);
       setLatestData(latestSensorData);
+      
+      // Also notify the mock socket service about the new data
+      // This keeps the socket interface working even though we're using API polling
+      socketService.notifyListeners(latestSensorData);
     }
   }, [latestSensorData]);
   
@@ -108,23 +104,13 @@ const SensorDashboard = () => {
     }
   }, [allSensorData]);
 
-  // Connect to socket service for real-time updates
+  // Initialize socket service (will use mock implementation)
   useEffect(() => {
     socketService.connect();
     
     const unsubscribe = socketService.onSensorUpdate((data) => {
-      console.log('Socket received real-time data update:', data);
-      setLatestData(data);
-      
-      // Add new data to historical data (to avoid having to refetch the full dataset)
-      setHistoricalData(prev => {
-        // Check if this data is already in our historical dataset to avoid duplicates
-        const exists = prev.some(item => item._id === data._id);
-        if (!exists) {
-          return [...prev, data];
-        }
-        return prev;
-      });
+      console.log('Socket received data update:', data);
+      // We already update the data from the API polling, so this is just a backup
     });
     
     return () => {
@@ -146,22 +132,6 @@ const SensorDashboard = () => {
       });
     }
   }, [startDate, endDate]);
-
-  const handleDateRangeChange = (value: string) => {
-    if (value === 'custom') {
-      // Open date picker
-      return;
-    }
-    
-    const selectedOption = dateRangeOptions.find(option => option.label === value);
-    if (selectedOption) {
-      setSelectedDateRange(selectedOption);
-      
-      // Update date pickers to match
-      setStartDate(new Date(selectedOption.start));
-      setEndDate(new Date(selectedOption.end));
-    }
-  };
 
   // Filter data based on selected date range
   const getFilteredData = () => {
@@ -212,10 +182,7 @@ const SensorDashboard = () => {
       }
     }
     
-    toast({
-      title: "Chart view loaded",
-      description: `"${preference.name}" settings applied to dashboard`,
-    });
+    toast.success(`Applied chart settings: "${preference.name}"`);
   };
 
   const getCurrentChartSettings = (): Omit<ChartPreference, 'id' | 'name' | 'createdAt' | 'updatedAt'> => {

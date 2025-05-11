@@ -1,20 +1,30 @@
 
 import { io, Socket } from 'socket.io-client';
 import { SensorData } from '@/types';
+import { toast } from "sonner";
 
-const SOCKET_URL = 'https://bright-aliza-asnaif-bfedfd0f.koyeb.app';
-
+// Using a mock socket service since the backend doesn't implement socket.io
 class SocketService {
   private socket: Socket | null = null;
   private listeners: Map<string, ((data: any) => void)[]> = new Map();
+  private mockInterval: NodeJS.Timeout | null = null;
+  private useMock = true; // Force using mock since backend doesn't have socket.io
 
-  // Initialize socket connection
+  // Initialize socket connection or mock
   connect(): void {
-    if (this.socket) return;
+    if (this.socket || this.mockInterval) return;
     
+    if (this.useMock) {
+      console.log('Setting up mock socket service...');
+      this.setupMockSocket();
+      return;
+    }
+    
+    // This code isn't used since useMock is true, but kept for reference
     console.log('Socket service connecting to real server...');
     
     try {
+      const SOCKET_URL = 'https://bright-aliza-asnaif-bfedfd0f.koyeb.app';
       this.socket = io(SOCKET_URL);
       
       this.socket.on('connect', () => {
@@ -23,6 +33,12 @@ class SocketService {
       
       this.socket.on('connect_error', (error) => {
         console.error('Socket connection error:', error);
+        toast.error('Failed to connect to real-time data source');
+        
+        // Fall back to mock if connection fails
+        this.socket?.disconnect();
+        this.socket = null;
+        this.setupMockSocket();
       });
       
       this.socket.on('sensor_data', (data: SensorData) => {
@@ -32,15 +48,36 @@ class SocketService {
       });
     } catch (error) {
       console.error('Error initializing socket:', error);
+      this.setupMockSocket();
     }
+  }
+
+  // Set up mock socket behavior
+  private setupMockSocket(): void {
+    console.log('Using mock socket implementation');
+    
+    // Clear any existing mock interval
+    if (this.mockInterval) {
+      clearInterval(this.mockInterval);
+    }
+    
+    // We won't simulate mock data since we're getting real data from the API
+    // Instead, we'll just provide the socket interface without actual emulation
+    
+    console.log('Mock socket ready - real-time updates will come from API polling');
   }
 
   // Disconnect socket
   disconnect(): void {
-    if (!this.socket) return;
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
     
-    this.socket.disconnect();
-    this.socket = null;
+    if (this.mockInterval) {
+      clearInterval(this.mockInterval);
+      this.mockInterval = null;
+    }
     console.log('Socket disconnected');
   }
 
@@ -76,6 +113,12 @@ class SocketService {
       eventListeners.splice(index, 1);
       this.listeners.set(event, eventListeners);
     }
+  }
+  
+  // Method to notify listeners with new data (used by external sources)
+  notifyListeners(data: SensorData): void {
+    const listeners = this.listeners.get('sensor_update') || [];
+    listeners.forEach(callback => callback(data));
   }
 }
 
