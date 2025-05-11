@@ -152,6 +152,20 @@ const SensorDashboard = () => {
     setExpandedChart(expandedChart === chartId ? null : chartId);
   };
 
+  const handleDateRangeChange = (value: string) => {
+    if (value === "custom") {
+      // Keep the current custom dates if they exist
+      return;
+    }
+    
+    const selectedOption = dateRangeOptions.find(option => option.label === value);
+    if (selectedOption) {
+      setSelectedDateRange(selectedOption);
+      setStartDate(new Date(selectedOption.start));
+      setEndDate(new Date(selectedOption.end));
+    }
+  };
+
   const handleLoadPreference = (preference: ChartPreference) => {
     // Apply the saved chart preference
     setChartType(preference.chartType);
