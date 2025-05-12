@@ -21,6 +21,11 @@ const SensorDataTable = ({ data, title = "Sensor Data History" }: SensorDataTabl
   const itemsPerPage = 10;
 
   useEffect(() => {
+  setSearchTerm("");
+}, []);
+
+
+  useEffect(() => {
     // Filter data based on search term
     const filtered = searchTerm
       ? data.filter(item => {
