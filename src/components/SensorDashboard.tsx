@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,8 +61,10 @@ const SensorDashboard = () => {
     },
     refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
     meta: {
-      onError: (error: Error) => {
-        toast.error(`Failed to fetch latest sensor data: ${error.message}`);
+      onSettled: (data, error) => {
+        if (error) {
+          toast.error(`Failed to fetch latest sensor data: ${error.message}`);
+        }
       }
     }
   });
@@ -79,8 +82,10 @@ const SensorDashboard = () => {
     },
     refetchInterval: 30000, // Refetch every 30 seconds for historical data updates
     meta: {
-      onError: (error: Error) => {
-        toast.error(`Failed to fetch historical sensor data: ${error.message}`);
+      onSettled: (data, error) => {
+        if (error) {
+          toast.error(`Failed to fetch historical sensor data: ${error.message}`);
+        }
       }
     }
   });
@@ -91,8 +96,21 @@ const SensorDashboard = () => {
       console.log('Latest sensor data updated:', latestSensorData);
       setLatestData(latestSensorData);
       
+      // Make sure to add the latest data to the historical data array too
+      // This ensures that charts are updated with the latest point
+      setHistoricalData(prevData => {
+        if (!prevData.length) return [latestSensorData];
+        
+        // Check if the latest data is already in the array (by _id)
+        const exists = prevData.some(item => item._id === latestSensorData._id);
+        if (!exists) {
+          // Add it at the end since it's the latest
+          return [...prevData, latestSensorData];
+        }
+        return prevData;
+      });
+      
       // Also notify the mock socket service about the new data
-      // This keeps the socket interface working even though we're using API polling
       socketService.notifyListeners(latestSensorData);
     }
   }, [latestSensorData]);
@@ -100,9 +118,20 @@ const SensorDashboard = () => {
   useEffect(() => {
     if (allSensorData && allSensorData.length > 0) {
       console.log('Historical sensor data updated with', allSensorData.length, 'records');
-      setHistoricalData(allSensorData);
+      
+      // Make sure we incorporate the latest data point if it exists
+      if (latestData) {
+        const latestDataIncluded = allSensorData.some(item => item._id === latestData._id);
+        if (!latestDataIncluded) {
+          setHistoricalData([...allSensorData, latestData]);
+        } else {
+          setHistoricalData(allSensorData);
+        }
+      } else {
+        setHistoricalData(allSensorData);
+      }
     }
-  }, [allSensorData]);
+  }, [allSensorData, latestData]);
 
   // Initialize socket service (will use mock implementation)
   useEffect(() => {
@@ -222,6 +251,7 @@ const SensorDashboard = () => {
     };
   };
 
+  // Important: Make sure we always have access to the latest data for display
   const isLoading = isLatestDataLoading && isAllDataLoading && historicalData.length === 0;
 
   return (
@@ -343,6 +373,7 @@ const SensorDashboard = () => {
                     isExpanded={expandedChart === 'temperature'}
                     onToggleExpand={() => toggleExpandChart('temperature')}
                     threshold={thresholds.temperature}
+                    latestData={latestData}
                   />
                   
                   <SensorChart
@@ -354,6 +385,7 @@ const SensorDashboard = () => {
                     isExpanded={expandedChart === 'humidity'}
                     onToggleExpand={() => toggleExpandChart('humidity')}
                     threshold={thresholds.humidity}
+                    latestData={latestData}
                   />
                   
                   <SensorChart
@@ -365,6 +397,7 @@ const SensorDashboard = () => {
                     isExpanded={expandedChart === 'air_quality'}
                     onToggleExpand={() => toggleExpandChart('air_quality')}
                     threshold={thresholds.air_quality}
+                    latestData={latestData}
                   />
                 </div>
               )}

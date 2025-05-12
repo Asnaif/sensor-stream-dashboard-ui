@@ -28,6 +28,7 @@ interface SensorChartProps {
   isExpanded?: boolean;
   onToggleExpand?: () => void;
   threshold?: { min: number; max: number };
+  latestData?: SensorData | null;
 }
 
 const SensorChart = ({
@@ -38,7 +39,8 @@ const SensorChart = ({
   unit,
   isExpanded = false,
   onToggleExpand,
-  threshold
+  threshold,
+  latestData
 }: SensorChartProps) => {
   const [chartData, setChartData] = useState<any[]>([]);
   const [stats, setStats] = useState({ min: 0, max: 0, avg: 0 });
@@ -70,10 +72,12 @@ const SensorChart = ({
     alert("Chart export functionality would go here");
   };
 
-  // Get the latest value directly from the latest data point
-  const latestValue = data.length > 0 
-    ? data[data.length - 1][dataKey] 
-    : 0;
+  // Get the latest value directly from the latest data point provided
+  const latestValue = latestData 
+    ? latestData[dataKey] 
+    : data.length > 0 
+      ? data[data.length - 1][dataKey] 
+      : 0;
     
   // Format the value to handle potential precision issues
   const formattedLatestValue = typeof latestValue === 'number' 
