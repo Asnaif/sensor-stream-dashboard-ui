@@ -45,6 +45,7 @@ const SensorChart = ({
   const [chartData, setChartData] = useState<any[]>([]);
   const [stats, setStats] = useState({ min: 0, max: 0, avg: 0 });
   const chartRef = useRef(null);
+  const [currentValue, setCurrentValue] = useState<number>(0);
 
   useEffect(() => {
     if (data.length === 0) return;
@@ -65,6 +66,17 @@ const SensorChart = ({
     setStats(calculatedStats);
   }, [data, dataKey]);
 
+  // Update current value whenever latestData changes
+  useEffect(() => {
+    if (latestData && latestData[dataKey] !== undefined) {
+      setCurrentValue(latestData[dataKey]);
+      console.log(`Updated ${dataKey} value to ${latestData[dataKey]}`);
+    } else if (data.length > 0) {
+      // Fallback to the most recent data point if latestData is not available
+      setCurrentValue(data[data.length - 1][dataKey]);
+    }
+  }, [latestData, data, dataKey]);
+
   const handleDownload = () => {
     if (!chartRef.current) return;
     
@@ -72,16 +84,9 @@ const SensorChart = ({
     alert("Chart export functionality would go here");
   };
 
-  // Get the latest value directly from the latest data point provided
-  const latestValue = latestData 
-    ? latestData[dataKey] 
-    : data.length > 0 
-      ? data[data.length - 1][dataKey] 
-      : 0;
-    
   // Format the value to handle potential precision issues
-  const formattedLatestValue = typeof latestValue === 'number' 
-    ? latestValue.toFixed(1) 
+  const formattedLatestValue = typeof currentValue === 'number' 
+    ? currentValue.toFixed(1) 
     : '0.0';
 
   return (
