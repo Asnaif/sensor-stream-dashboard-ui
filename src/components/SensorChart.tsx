@@ -47,6 +47,7 @@ const SensorChart = ({
   const chartRef = useRef(null);
   const [currentValue, setCurrentValue] = useState<number>(0);
 
+  // Process chart data when data array changes
   useEffect(() => {
     if (data.length === 0) return;
     
@@ -66,16 +67,20 @@ const SensorChart = ({
     setStats(calculatedStats);
   }, [data, dataKey]);
 
-  // Update current value whenever latestData changes
+  // Update current value whenever latestData changes - this is a separate effect
+  // to ensure we get real-time updates even if the chart data hasn't changed
   useEffect(() => {
     if (latestData && latestData[dataKey] !== undefined) {
-      setCurrentValue(latestData[dataKey]);
-      console.log(`Updated ${dataKey} value to ${latestData[dataKey]}`);
+      const value = latestData[dataKey];
+      setCurrentValue(value);
+      console.log(`Updated ${title} ${dataKey} value to ${value} from latest data`);
     } else if (data.length > 0) {
       // Fallback to the most recent data point if latestData is not available
-      setCurrentValue(data[data.length - 1][dataKey]);
+      const value = data[data.length - 1][dataKey];
+      setCurrentValue(value);
+      console.log(`Updated ${title} ${dataKey} value to ${value} from historic data`);
     }
-  }, [latestData, data, dataKey]);
+  }, [latestData, title, dataKey]);
 
   const handleDownload = () => {
     if (!chartRef.current) return;
