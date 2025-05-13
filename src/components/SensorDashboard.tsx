@@ -425,6 +425,8 @@
 
 // Modified SensorDashboard with improved socket handling
 
+// Modified SensorDashboard with improved socket handling
+
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -464,6 +466,7 @@ const SensorDashboard = () => {
   );
   const [chartType, setChartType] = useState<'line' | 'bar' | 'area'>('line');
   const [useSocketFallback, setUseSocketFallback] = useState<boolean>(false);
+  const [isSocketConnected, setIsSocketConnected] = useState<boolean>(false);
   
   const { toast: uiToast } = useToast();
   const { isAuthenticated } = useAuth();
@@ -485,8 +488,23 @@ const SensorDashboard = () => {
         if (!response.success || !response.data) {
           throw new Error('Failed to fetch latest sensor data');
         }
+        
         // API is working, no need for socket fallback
-        setUseSocketFallback(false);
+        if (useSocketFallback) {
+          console.log('API working again, disabling socket fallback');
+          setUseSocketFallback(false);
+          
+          // Disconnect socket if it was being used
+          if (isSocketConnected) {
+            try {
+              socketService.disconnect();
+              setIsSocketConnected(false);
+            } catch (e) {
+              console.warn('Error disconnecting socket:', e);
+            }
+          }
+        }
+        
         return response.data;
       } catch (error) {
         // API failed, enable socket fallback
@@ -497,13 +515,6 @@ const SensorDashboard = () => {
     },
     refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
     retry: 2,
-    meta: {
-      onSettled: (data, error) => {
-        if (error) {
-          toast.error(`Failed to fetch latest sensor data: ${error.message}`);
-        }
-      }
-    }
   });
 
   // Query to fetch all sensor data for historical view
@@ -524,16 +535,9 @@ const SensorDashboard = () => {
     },
     refetchInterval: 30000, // Refetch every 30 seconds for historical data updates
     retry: 2,
-    meta: {
-      onSettled: (data, error) => {
-        if (error) {
-          toast.error(`Failed to fetch historical sensor data: ${error.message}`);
-        }
-      }
-    }
   });
 
-  // Effect to handle both latest and historical data
+  // Effect to handle both latest and historical data from API
   useEffect(() => {
     // Update latest data state first
     if (latestSensorData) {
@@ -564,13 +568,33 @@ const SensorDashboard = () => {
     }
   }, [latestSensorData, allSensorData]);
 
-  // Initialize socket service ONLY if API calls are failing
+  // Socket fallback management - connect/disconnect based on API status
   useEffect(() => {
-    // Only connect to socket if API is failing or we've explicitly opted to use socket fallback
-    if (useSocketFallback || (isLatestDataError && isAllDataError)) {
+    // Check if we need to use socket fallback
+    const needsFallback = useSocketFallback || (isLatestDataError && isAllDataError);
+    
+    if (needsFallback && !isSocketConnected) {
+      // We need fallback and socket is not connected - connect it
       console.log('API data unavailable, connecting to socket fallback service');
-      socketService.connect();
-      
+      try {
+        socketService.connect();
+        setIsSocketConnected(true);
+      } catch (e) {
+        console.error('Failed to connect to socket service:', e);
+      }
+    } else if (!needsFallback && isSocketConnected) {
+      // We don't need fallback but socket is connected - disconnect it
+      console.log('API data available, disconnecting socket fallback service');
+      try {
+        socketService.disconnect();
+        setIsSocketConnected(false);
+      } catch (e) {
+        console.warn('Error disconnecting socket:', e);
+      }
+    }
+    
+    // Only set up socket listener if we're connected
+    if (isSocketConnected) {
       const unsubscribe = socketService.onSensorUpdate((data) => {
         console.log('Socket received data update (fallback mode):', data);
         
@@ -593,21 +617,29 @@ const SensorDashboard = () => {
         }
       });
       
+      // Return cleanup function
       return () => {
-        console.log('Disconnecting from socket fallback service');
+        console.log('Cleaning up socket listener');
         unsubscribe();
-        socketService.disconnect();
       };
     }
     
-    // If we have good API data, ensure socket is disconnected to prevent mock data interference
-    if (!useSocketFallback && socketService.isConnected()) {
-      console.log('Disconnecting socket service as API data is available');
-      socketService.disconnect();
-    }
-    
     return undefined;
-  }, [useSocketFallback, isLatestDataError, isAllDataError, latestData]);
+  }, [useSocketFallback, isLatestDataError, isAllDataError, isSocketConnected, latestData]);
+
+  // Disconnect socket on component unmount to prevent leaked connections
+  useEffect(() => {
+    return () => {
+      if (isSocketConnected) {
+        console.log('Component unmounting, disconnecting socket');
+        try {
+          socketService.disconnect();
+        } catch (e) {
+          console.warn('Error disconnecting socket on unmount:', e);
+        }
+      }
+    };
+  }, [isSocketConnected]);
 
   // Handle custom date range selection
   useEffect(() => {
@@ -716,7 +748,7 @@ const SensorDashboard = () => {
   const isLoading = isLatestDataLoading && isAllDataLoading && historicalData.length === 0;
   
   // Show data source indicator for user awareness
-  const dataSourceIndicator = useSocketFallback 
+  const dataSourceIndicator = isSocketConnected 
     ? "Using socket fallback (mock data)" 
     : "Using API data";
 
@@ -734,7 +766,7 @@ const SensorDashboard = () => {
                     ({historicalData.length} records)
                   </span>
                 )}
-                {useSocketFallback && (
+                {isSocketConnected && (
                   <span className="ml-2 text-xs text-amber-500 font-semibold">
                     {dataSourceIndicator}
                   </span>
@@ -897,6 +929,7 @@ const SensorDashboard = () => {
           <CardContent>
             <div className="text-xs font-mono overflow-auto max-h-[300px] p-2 bg-gray-100 rounded">
               <div>Data source: {dataSourceIndicator}</div>
+              <div>Socket connected: {isSocketConnected ? 'Yes' : 'No'}</div>
               <div>Latest data: {latestData ? JSON.stringify(latestData) : 'null'}</div>
               <div>Historical data count: {historicalData.length}</div>
               <div>Filtered data count: {filteredData.length}</div>
