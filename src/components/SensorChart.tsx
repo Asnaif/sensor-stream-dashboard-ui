@@ -138,6 +138,8 @@
 // };
 
 // export default SensorChart;
+// FIXED SensorChart component with improved value handling
+
 import { useState, useEffect } from "react";
 import { SensorData } from "@/types";
 import { formatTime } from "@/utils/datetime";
@@ -198,28 +200,25 @@ const SensorChart = ({
     setStats(calculatedStats);
   }, [data, dataKey]);
 
-  // FIXED: Update current value using latestData as primary source
+  // FIXED: Always prioritize latestData for display
   useEffect(() => {
-    // Log received data for debugging
-    console.log(`${title} received latestData:`, latestData);
-    console.log(`${title} dataKey:`, dataKey);
-    
+    // First priority: Get value from latestData
     if (latestData && typeof latestData[dataKey] === 'number') {
-      // Always prioritize latestData if available
-      const value = latestData[dataKey] as number;
-      console.log(`${title} setting value from latestData:`, value);
-      setCurrentValue(value);
-    } else if (data.length > 0) {
-      // Fallback to most recent data in the data array
+      setCurrentValue(latestData[dataKey] as number);
+      return;
+    }
+    
+    // Second priority: Get value from the most recent data point in the data array
+    if (data.length > 0) {
       const mostRecentData = data[data.length - 1];
       if (mostRecentData && typeof mostRecentData[dataKey] === 'number') {
-        const value = mostRecentData[dataKey] as number;
-        console.log(`${title} setting value from historic data:`, value);
-        setCurrentValue(value);
-      } else {
-        console.log(`${title} no valid data found for ${dataKey}`);
+        setCurrentValue(mostRecentData[dataKey] as number);
+        return;
       }
     }
+    
+    // If we got here, we couldn't find a valid current value
+    console.warn(`${title}: Could not find valid ${dataKey} value`);
   }, [latestData, data, dataKey, title]);
 
   const handleDownload = () => {
