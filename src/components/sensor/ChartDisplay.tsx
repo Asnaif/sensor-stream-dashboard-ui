@@ -1,106 +1,4 @@
 
-// import { useRef } from "react";
-// import {
-//   LineChart,
-//   Line,
-//   XAxis,
-//   YAxis,
-//   CartesianGrid,
-//   Tooltip,
-//   Legend,
-//   ResponsiveContainer,
-//   ReferenceLine
-// } from "recharts";
-// import { formatDateTime } from "@/utils/datetime";
-
-// interface ChartDisplayProps {
-//   chartData: any[];
-//   dataKey: string;
-//   color: string;
-//   title: string;
-//   unit: string;
-//   stats: { min: number; max: number; avg: number };
-//   threshold?: { min: number; max: number };
-// }
-
-// const ChartDisplay = ({
-//   chartData,
-//   dataKey,
-//   color,
-//   title,
-//   unit,
-//   stats,
-//   threshold
-// }: ChartDisplayProps) => {
-//   const chartRef = useRef(null);
-
-//   if (chartData.length === 0) {
-//     return (
-//       <div className="flex h-full items-center justify-center">
-//         <p className="text-muted-foreground">No data available</p>
-//       </div>
-//     );
-//   }
-
-//   return (
-//     <ResponsiveContainer width="100%" height="100%" ref={chartRef}>
-//       <LineChart
-//         data={chartData}
-//         margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
-//       >
-//         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-//         <XAxis
-//           dataKey="formattedTime"
-//           tick={{ fontSize: 12 }}
-//           tickFormatter={(value) => value}
-//         />
-//         <YAxis 
-//           tick={{ fontSize: 12 }} 
-//           domain={threshold ? [
-//             Math.min(threshold.min * 0.9, stats.min * 0.9),
-//             Math.max(threshold.max * 1.1, stats.max * 1.1)
-//           ] : ['auto', 'auto']} 
-//         />
-//         <Tooltip 
-//           formatter={(value) => [`${value} ${unit}`, title]}
-//           labelFormatter={(label) => {
-//             const timestamp = chartData.find(d => d.formattedTime === label)?.timestamp;
-//             return timestamp ? formatDateTime(timestamp as string) : label;
-//           }}
-//         />
-//         <Legend />
-//         {threshold && (
-//           <>
-//             <ReferenceLine
-//               y={threshold.max}
-//               stroke="red"
-//               strokeDasharray="3 3"
-//               label={{ value: `Max: ${threshold.max}`, position: 'insideTopLeft' }}
-//             />
-//             <ReferenceLine
-//               y={threshold.min}
-//               stroke="blue"
-//               strokeDasharray="3 3"
-//               label={{ value: `Min: ${threshold.min}`, position: 'insideBottomLeft' }}
-//             />
-//           </>
-//         )}
-//         <Line
-//           type="monotone"
-//           dataKey={dataKey}
-//           stroke={color}
-//           strokeWidth={2}
-//           dot={false}
-//           activeDot={{ r: 6 }}
-//         />
-//       </LineChart>
-//     </ResponsiveContainer>
-//   );
-// };
-
-// export default ChartDisplay;
-
-// ChartDisplay.jsx
 import React from "react";
 import {
   LineChart,
@@ -125,6 +23,26 @@ import {
  * @param {Object} props.threshold - Min and max threshold values
  */
 const ChartDisplay = ({ chartData, dataKey, color, title, unit, stats, threshold }) => {
+  // Verify we have data to render
+  if (!chartData || chartData.length === 0) {
+    console.warn('ChartDisplay: No chart data provided');
+    return (
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        No data available
+      </div>
+    );
+  }
+
+  // Verify the dataKey exists in the first data point
+  if (!chartData[0].hasOwnProperty(dataKey)) {
+    console.error(`ChartDisplay: Data key "${dataKey}" not found in chart data`);
+    return (
+      <div className="flex h-full items-center justify-center text-red-500">
+        Invalid data key
+      </div>
+    );
+  }
+
   // Create a custom tooltip that shows formatted time and value
   const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
@@ -132,7 +50,7 @@ const ChartDisplay = ({ chartData, dataKey, color, title, unit, stats, threshold
         <div className="bg-white p-2 border border-gray-200 shadow-sm rounded">
           <p className="text-xs text-gray-500">{payload[0].payload.formattedTime}</p>
           <p className="text-sm font-medium">
-            {payload[0].value.toFixed(1)} {unit}
+            {payload[0].value !== undefined ? payload[0].value.toFixed(1) : 'N/A'} {unit}
           </p>
         </div>
       );
@@ -140,9 +58,32 @@ const ChartDisplay = ({ chartData, dataKey, color, title, unit, stats, threshold
     return null;
   };
 
+  // Calculate domain to ensure threshold lines are visible
+  const calculateDomain = () => {
+    const values = chartData.map(item => item[dataKey]).filter(val => val !== undefined);
+    
+    if (values.length === 0) return [0, 1]; // Default domain if no valid values
+    
+    const dataMin = Math.min(...values);
+    const dataMax = Math.max(...values);
+    
+    // Include thresholds if provided
+    const minBound = threshold ? Math.min(dataMin, threshold.min) : dataMin;
+    const maxBound = threshold ? Math.max(dataMax, threshold.max) : dataMax;
+    
+    // Add some padding
+    const padding = (maxBound - minBound) * 0.1;
+    return [Math.floor(minBound - padding), Math.ceil(maxBound + padding)];
+  };
+
+  const domain = calculateDomain();
+
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+      <LineChart 
+        data={chartData} 
+        margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
+      >
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
         <XAxis
           dataKey="formattedTime"
@@ -151,14 +92,12 @@ const ChartDisplay = ({ chartData, dataKey, color, title, unit, stats, threshold
           axisLine={false}
         />
         <YAxis
-          domain={[
-            dataMin => Math.floor(Math.min(dataMin, threshold?.min || dataMin) - 1),
-            dataMax => Math.ceil(Math.max(dataMax, threshold?.max || dataMax) + 1)
-          ]}
+          domain={domain}
           tick={{ fontSize: 10 }}
           tickLine={false}
           axisLine={false}
           width={30}
+          tickFormatter={value => value.toString()}
         />
         <Tooltip content={<CustomTooltip />} />
         
@@ -198,6 +137,8 @@ const ChartDisplay = ({ chartData, dataKey, color, title, unit, stats, threshold
           dot={false}
           activeDot={{ r: 4 }}
           animationDuration={500}
+          connectNulls={true}
+          isAnimationActive={true}
         />
       </LineChart>
     </ResponsiveContainer>

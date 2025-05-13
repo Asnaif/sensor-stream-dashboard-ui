@@ -1,28 +1,4 @@
 
-// interface ChartStatisticsProps {
-//   stats: { min: number; max: number; avg: number };
-//   unit: string;
-// }
-
-// const ChartStatistics = ({ stats, unit }: ChartStatisticsProps) => {
-//   return (
-//     <div className="flex space-x-4 text-xs text-muted-foreground">
-//       <div>
-//         <span className="font-semibold">Min:</span> {stats.min.toFixed(1)} {unit}
-//       </div>
-//       <div>
-//         <span className="font-semibold">Avg:</span> {stats.avg.toFixed(1)} {unit}
-//       </div>
-//       <div>
-//         <span className="font-semibold">Max:</span> {stats.max.toFixed(1)} {unit}
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default ChartStatistics;
-
-// ChartStatistics.jsx
 import React from "react";
 
 /**
@@ -35,16 +11,26 @@ import React from "react";
  * @param {string} props.unit - Unit of measurement (°C, %, etc.)
  */
 const ChartStatistics = ({ stats, unit }) => {
+  // Check if stats are valid numbers
+  const validMin = !isNaN(stats.min) && isFinite(stats.min);
+  const validMax = !isNaN(stats.max) && isFinite(stats.max);
+  const validAvg = !isNaN(stats.avg) && isFinite(stats.avg);
+
+  // Format the values safely
+  const formatValue = (value, isValid) => {
+    return isValid ? value.toFixed(1) : 'N/A';
+  };
+
   return (
     <div className="flex gap-3 text-xs text-gray-500">
       <div>
-        Min: <span className="font-medium">{stats.min.toFixed(1)} {unit}</span>
+        Min: <span className="font-medium">{formatValue(stats.min, validMin)} {unit}</span>
       </div>
       <div>
-        Avg: <span className="font-medium">{stats.avg.toFixed(1)} {unit}</span>
+        Avg: <span className="font-medium">{formatValue(stats.avg, validAvg)} {unit}</span>
       </div>
       <div>
-        Max: <span className="font-medium">{stats.max.toFixed(1)} {unit}</span>
+        Max: <span className="font-medium">{formatValue(stats.max, validMax)} {unit}</span>
       </div>
     </div>
   );
