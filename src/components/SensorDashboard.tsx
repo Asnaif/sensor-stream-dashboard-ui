@@ -549,8 +549,9 @@ const SensorDashboard = () => {
     if (allSensorData && allSensorData.length > 0) {
       console.log('Historical sensor data updated with', allSensorData.length, 'records');
       
-      // Create a new array to avoid reference issues
-      let updatedHistoricalData = [...allSensorData];
+      let updatedHistoricalData = [...allSensorData].sort((a, b) => 
+      new Date(a.timestamp as string).getTime() - new Date(b.timestamp as string).getTime()
+    );
       
       // If we have latest data that's not in the historical data, add it
       if (latestSensorData) {
@@ -657,16 +658,21 @@ const SensorDashboard = () => {
 
   // Filter data based on selected date range
   const getFilteredData = () => {
-    if (!historicalData.length) return [];
-    
-    const startTimestamp = new Date(selectedDateRange.start).getTime();
-    const endTimestamp = new Date(selectedDateRange.end).getTime();
-    
-    return historicalData.filter(item => {
-      const itemTimestamp = new Date(item.timestamp as string).getTime();
-      return itemTimestamp >= startTimestamp && itemTimestamp <= endTimestamp;
-    });
-  };
+  if (!historicalData.length) return [];
+  
+  const startTimestamp = new Date(selectedDateRange.start).getTime();
+  const endTimestamp = new Date(selectedDateRange.end).getTime();
+  
+  const filtered = historicalData.filter(item => {
+    const itemTimestamp = new Date(item.timestamp as string).getTime();
+    return itemTimestamp >= startTimestamp && itemTimestamp <= endTimestamp;
+  });
+  
+  // Make sure data is sorted chronologically
+  return filtered.sort((a, b) => 
+    new Date(a.timestamp as string).getTime() - new Date(b.timestamp as string).getTime()
+  );
+};
 
   const filteredData = getFilteredData();
 
