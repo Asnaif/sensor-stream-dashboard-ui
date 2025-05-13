@@ -60,9 +60,8 @@ const SensorChart = ({
   }, [data, dataKey]);
 
   // Fix: Update current value with the latest data from API
-  // This effect runs separately from the chart data processing
   useEffect(() => {
-    if (latestData) {
+    if (latestData && typeof latestData[dataKey] === 'number') {
       // Get the value directly from latestData
       const value = latestData[dataKey];
       setCurrentValue(value);
@@ -70,9 +69,13 @@ const SensorChart = ({
     } else if (data.length > 0) {
       // Fallback to most recent data in the data array
       const mostRecentData = data[data.length - 1];
-      const value = mostRecentData[dataKey];
-      setCurrentValue(value);
-      console.log(`Updated ${title} ${dataKey} value to ${value} from historic data`, mostRecentData);
+      if (mostRecentData && typeof mostRecentData[dataKey] === 'number') {
+        const value = mostRecentData[dataKey];
+        setCurrentValue(value);
+        console.log(`Updated ${title} ${dataKey} value to ${value} from historic data`, mostRecentData);
+      } else {
+        console.log(`Could not find valid ${dataKey} value in data for ${title}`, mostRecentData);
+      }
     }
   }, [latestData, data, title, dataKey]);
 
