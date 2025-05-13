@@ -1,23 +1,16 @@
 
-import { useState, useEffect, useRef } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  ReferenceLine
-} from "recharts";
+import { useState, useEffect } from "react";
 import { SensorData } from "@/types";
-import { formatTime, formatDateTime } from "@/utils/datetime";
+import { formatTime } from "@/utils/datetime";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Maximize2, Minimize2, Download } from "lucide-react";
 import { downsampleData, calculateStatistics } from "@/workers/dataWorker";
+
+// Import our new components
+import ThresholdBadge from "./sensor/ThresholdBadge";
+import ChartStatistics from "./sensor/ChartStatistics";
+import ChartDisplay from "./sensor/ChartDisplay";
 
 interface SensorChartProps {
   title: string;
@@ -44,7 +37,6 @@ const SensorChart = ({
 }: SensorChartProps) => {
   const [chartData, setChartData] = useState<any[]>([]);
   const [stats, setStats] = useState({ min: 0, max: 0, avg: 0 });
-  const chartRef = useRef(null);
   const [currentValue, setCurrentValue] = useState<number>(0);
 
   // Process chart data when data array changes
@@ -67,25 +59,24 @@ const SensorChart = ({
     setStats(calculatedStats);
   }, [data, dataKey]);
 
-  // Update current value whenever latestData changes - this is a separate effect
-  // to ensure we get real-time updates even if the chart data hasn't changed
+  // Fix: Update current value with the latest data from API
+  // This effect runs separately from the chart data processing
   useEffect(() => {
-    if (latestData && latestData[dataKey] !== undefined) {
+    if (latestData) {
+      // Get the value directly from latestData
       const value = latestData[dataKey];
       setCurrentValue(value);
-      console.log(`Updated ${title} ${dataKey} value to ${value} from latest data`);
+      console.log(`Updated ${title} ${dataKey} value to ${value} from latest data`, latestData);
     } else if (data.length > 0) {
-      // Fallback to the most recent data point if latestData is not available
-      const value = data[data.length - 1][dataKey];
+      // Fallback to most recent data in the data array
+      const mostRecentData = data[data.length - 1];
+      const value = mostRecentData[dataKey];
       setCurrentValue(value);
-      console.log(`Updated ${title} ${dataKey} value to ${value} from historic data`);
+      console.log(`Updated ${title} ${dataKey} value to ${value} from historic data`, mostRecentData);
     }
-  }, [latestData, title, dataKey]);
+  }, [latestData, data, title, dataKey]);
 
   const handleDownload = () => {
-    if (!chartRef.current) return;
-    
-    // This would ideally use a proper chart export library
     alert("Chart export functionality would go here");
   };
 
@@ -112,98 +103,29 @@ const SensorChart = ({
             </span>
             <span className="ml-1">{unit}</span>
           </div>
-          {threshold && (
-            <Badge variant={
-              parseFloat(formattedLatestValue) > threshold.max || 
-              parseFloat(formattedLatestValue) < threshold.min 
-                ? "destructive" 
-                : "secondary"
-            }>
-              {parseFloat(formattedLatestValue) > threshold.max
-                ? "Above threshold"
-                : parseFloat(formattedLatestValue) < threshold.min
-                ? "Below threshold"
-                : "Normal"}
-            </Badge>
-          )}
+          <ThresholdBadge 
+            currentValue={parseFloat(formattedLatestValue)} 
+            threshold={threshold} 
+          />
         </div>
       </CardHeader>
 
       <CardContent className="p-4">
         <div className="h-[200px]">
-          {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%" ref={chartRef}>
-              <LineChart
-                data={chartData}
-                margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis
-                  dataKey="formattedTime"
-                  tick={{ fontSize: 12 }}
-                  tickFormatter={(value) => value}
-                />
-                <YAxis 
-                  tick={{ fontSize: 12 }} 
-                  domain={threshold ? [
-                    Math.min(threshold.min * 0.9, stats.min * 0.9),
-                    Math.max(threshold.max * 1.1, stats.max * 1.1)
-                  ] : ['auto', 'auto']} 
-                />
-                <Tooltip 
-                  formatter={(value) => [`${value} ${unit}`, title]}
-                  labelFormatter={(label) => {
-                    const timestamp = chartData.find(d => d.formattedTime === label)?.timestamp;
-                    return timestamp ? formatDateTime(timestamp as string) : label;
-                  }}
-                />
-                <Legend />
-                {threshold && (
-                  <>
-                    <ReferenceLine
-                      y={threshold.max}
-                      stroke="red"
-                      strokeDasharray="3 3"
-                      label={{ value: `Max: ${threshold.max}`, position: 'insideTopLeft' }}
-                    />
-                    <ReferenceLine
-                      y={threshold.min}
-                      stroke="blue"
-                      strokeDasharray="3 3"
-                      label={{ value: `Min: ${threshold.min}`, position: 'insideBottomLeft' }}
-                    />
-                  </>
-                )}
-                <Line
-                  type="monotone"
-                  dataKey={dataKey}
-                  stroke={color}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-muted-foreground">No data available</p>
-            </div>
-          )}
+          <ChartDisplay 
+            chartData={chartData}
+            dataKey={dataKey}
+            color={color}
+            title={title}
+            unit={unit}
+            stats={stats}
+            threshold={threshold}
+          />
         </div>
       </CardContent>
 
-      <CardFooter className="p-4 pt-0 flex justify-between text-xs text-muted-foreground">
-        <div className="flex space-x-4">
-          <div>
-            <span className="font-semibold">Min:</span> {stats.min.toFixed(1)} {unit}
-          </div>
-          <div>
-            <span className="font-semibold">Avg:</span> {stats.avg.toFixed(1)} {unit}
-          </div>
-          <div>
-            <span className="font-semibold">Max:</span> {stats.max.toFixed(1)} {unit}
-          </div>
-        </div>
+      <CardFooter className="p-4 pt-0 flex justify-between">
+        <ChartStatistics stats={stats} unit={unit} />
         <Button variant="ghost" size="icon" onClick={handleDownload} title="Download chart data">
           <Download className="h-4 w-4" />
         </Button>
