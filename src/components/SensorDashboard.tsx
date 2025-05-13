@@ -423,7 +423,7 @@
 // export default SensorDashboard;
 
 
-// FIXED SensorDashboard with improved data handling
+// Modified SensorDashboard with improved socket handling
 
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -463,6 +463,7 @@ const SensorDashboard = () => {
     new Date(selectedDateRange.end)
   );
   const [chartType, setChartType] = useState<'line' | 'bar' | 'area'>('line');
+  const [useSocketFallback, setUseSocketFallback] = useState<boolean>(false);
   
   const { toast: uiToast } = useToast();
   const { isAuthenticated } = useAuth();
@@ -472,20 +473,30 @@ const SensorDashboard = () => {
   const thresholds = {
     temperature: { min: 18, max: 30 },
     humidity: { min: 30, max: 70 },
-    air_quality: { min: 0, max: 1000 } // Fixed: Updated to match your actual data range
+    air_quality: { min: 0, max: 1000 }
   };
 
   // Query to fetch latest sensor data
-  const { data: latestSensorData, isLoading: isLatestDataLoading } = useQuery({
+  const { data: latestSensorData, isLoading: isLatestDataLoading, isError: isLatestDataError } = useQuery({
     queryKey: ['latestSensorData'],
     queryFn: async () => {
-      const response = await sensorApi.getLatest();
-      if (!response.success || !response.data) {
-        throw new Error('Failed to fetch latest sensor data');
+      try {
+        const response = await sensorApi.getLatest();
+        if (!response.success || !response.data) {
+          throw new Error('Failed to fetch latest sensor data');
+        }
+        // API is working, no need for socket fallback
+        setUseSocketFallback(false);
+        return response.data;
+      } catch (error) {
+        // API failed, enable socket fallback
+        console.warn('API failed, enabling socket fallback mode');
+        setUseSocketFallback(true);
+        throw error;
       }
-      return response.data;
     },
     refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
+    retry: 2,
     meta: {
       onSettled: (data, error) => {
         if (error) {
@@ -496,17 +507,23 @@ const SensorDashboard = () => {
   });
 
   // Query to fetch all sensor data for historical view
-  const { data: allSensorData, isLoading: isAllDataLoading } = useQuery({
+  const { data: allSensorData, isLoading: isAllDataLoading, isError: isAllDataError } = useQuery({
     queryKey: ['allSensorData'],
     queryFn: async () => {
-      const response = await sensorApi.getAll();
-      if (!response.success || !response.data) {
-        throw new Error('Failed to fetch all sensor data');
+      try {
+        const response = await sensorApi.getAll();
+        if (!response.success || !response.data) {
+          throw new Error('Failed to fetch all sensor data');
+        }
+        console.log('Fetched all sensor data from API:', response.data.length, 'records');
+        return response.data;
+      } catch (error) {
+        console.warn('Failed to fetch historical data from API');
+        throw error;
       }
-      console.log('Fetched all sensor data from API:', response.data.length, 'records');
-      return response.data;
     },
     refetchInterval: 30000, // Refetch every 30 seconds for historical data updates
+    retry: 2,
     meta: {
       onSettled: (data, error) => {
         if (error) {
@@ -516,15 +533,12 @@ const SensorDashboard = () => {
     }
   });
 
-  // FIXED: Combined effect to handle both latest and historical data
+  // Effect to handle both latest and historical data
   useEffect(() => {
     // Update latest data state first
     if (latestSensorData) {
-      console.log('Latest sensor data updated:', latestSensorData);
+      console.log('Latest sensor data updated from API:', latestSensorData);
       setLatestData(latestSensorData);
-      
-      // Notify socket listeners
-      socketService.notifyListeners(latestSensorData);
     }
     
     // Then handle the full historical dataset
@@ -550,23 +564,50 @@ const SensorDashboard = () => {
     }
   }, [latestSensorData, allSensorData]);
 
-  // Initialize socket service (will use mock implementation)
+  // Initialize socket service ONLY if API calls are failing
   useEffect(() => {
-    socketService.connect();
+    // Only connect to socket if API is failing or we've explicitly opted to use socket fallback
+    if (useSocketFallback || (isLatestDataError && isAllDataError)) {
+      console.log('API data unavailable, connecting to socket fallback service');
+      socketService.connect();
+      
+      const unsubscribe = socketService.onSensorUpdate((data) => {
+        console.log('Socket received data update (fallback mode):', data);
+        
+        if (data) {
+          // Update latest data
+          if (!latestData || new Date(data.timestamp) > new Date(latestData.timestamp)) {
+            setLatestData(data);
+          }
+          
+          // Add to historical data if not already present
+          setHistoricalData(prevData => {
+            const exists = prevData.some(item => item._id === data._id);
+            if (!exists) {
+              return [...prevData, data].sort((a, b) => 
+                new Date(a.timestamp as string).getTime() - new Date(b.timestamp as string).getTime()
+              );
+            }
+            return prevData;
+          });
+        }
+      });
+      
+      return () => {
+        console.log('Disconnecting from socket fallback service');
+        unsubscribe();
+        socketService.disconnect();
+      };
+    }
     
-    const unsubscribe = socketService.onSensorUpdate((data) => {
-      console.log('Socket received data update:', data);
-      // Handle socket data if needed
-      if (data && (!latestData || new Date(data.timestamp) > new Date(latestData.timestamp))) {
-        setLatestData(data);
-      }
-    });
-    
-    return () => {
-      unsubscribe();
+    // If we have good API data, ensure socket is disconnected to prevent mock data interference
+    if (!useSocketFallback && socketService.isConnected()) {
+      console.log('Disconnecting socket service as API data is available');
       socketService.disconnect();
-    };
-  }, [latestData]);
+    }
+    
+    return undefined;
+  }, [useSocketFallback, isLatestDataError, isAllDataError, latestData]);
 
   // Handle custom date range selection
   useEffect(() => {
@@ -673,6 +714,11 @@ const SensorDashboard = () => {
 
   // Important: Make sure we always have access to the latest data for display
   const isLoading = isLatestDataLoading && isAllDataLoading && historicalData.length === 0;
+  
+  // Show data source indicator for user awareness
+  const dataSourceIndicator = useSocketFallback 
+    ? "Using socket fallback (mock data)" 
+    : "Using API data";
 
   return (
     <div className="container py-6 space-y-6">
@@ -686,6 +732,11 @@ const SensorDashboard = () => {
                 {!isLoading && historicalData && (
                   <span className="ml-2 text-xs text-muted-foreground">
                     ({historicalData.length} records)
+                  </span>
+                )}
+                {useSocketFallback && (
+                  <span className="ml-2 text-xs text-amber-500 font-semibold">
+                    {dataSourceIndicator}
                   </span>
                 )}
               </CardDescription>
@@ -784,7 +835,6 @@ const SensorDashboard = () => {
                 </div>
               ) : (
                 <div className={`grid gap-4 ${preferences.viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-                  {/* FIXED: Explicitly passing latest data to each chart */}
                   <SensorChart
                     title="Temperature"
                     data={filteredData}
@@ -846,10 +896,12 @@ const SensorDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-xs font-mono overflow-auto max-h-[300px] p-2 bg-gray-100 rounded">
+              <div>Data source: {dataSourceIndicator}</div>
               <div>Latest data: {latestData ? JSON.stringify(latestData) : 'null'}</div>
               <div>Historical data count: {historicalData.length}</div>
               <div>Filtered data count: {filteredData.length}</div>
               <div>Date range: {selectedDateRange.start} to {selectedDateRange.end}</div>
+              <div>API status: Latest={isLatestDataError ? 'Error' : 'OK'}, Historical={isAllDataError ? 'Error' : 'OK'}</div>
             </div>
           </CardContent>
         </Card>
