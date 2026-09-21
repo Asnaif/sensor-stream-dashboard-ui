@@ -44,7 +44,7 @@ const ChartDisplay = ({ chartData, dataKey, color, title, unit, stats, threshold
   }
 
   // Create a custom tooltip that shows formatted time and value
-  const CustomTooltip = ({ active, payload }) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-2 border border-gray-200 shadow-sm rounded">

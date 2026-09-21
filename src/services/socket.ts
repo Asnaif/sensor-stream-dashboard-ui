@@ -7,7 +7,7 @@ import { toast } from "sonner";
 class SocketService {
   private socket: Socket | null = null;
   private listeners: Map<string, ((data: any) => void)[]> = new Map();
-  private mockInterval: NodeJS.Timeout | null = null;
+  private mockInterval: ReturnType<typeof setInterval> | null = null;
   private useMock = true; // Force using mock since backend doesn't have socket.io
 
   // Initialize socket connection or mock
