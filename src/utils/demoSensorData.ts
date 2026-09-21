@@ -8,7 +8,7 @@ export const createDemoReading = (timestamp = new Date(), index = 0): SensorData
   timestamp: timestamp.toISOString(),
   temperature: round(34.2 + Math.sin(index / 4) * 1.8),
   humidity: round(66 + Math.cos(index / 5) * 5),
-  air_quality: Math.round(1143 + Math.sin(index / 3) * 170),
+  air_quality: Math.round(180 + Math.sin(index / 3) * 60),
 });
 
 export const createDemoSensorHistory = (days = 30): SensorData[] => {
