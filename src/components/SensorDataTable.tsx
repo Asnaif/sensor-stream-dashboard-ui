@@ -170,7 +170,7 @@
 
 
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { SensorData } from "@/types";
 import { formatDateTime } from "@/utils/datetime";
 import { Button } from "@/components/ui/button";
@@ -185,20 +185,6 @@ interface SensorDataTableProps {
   data: SensorData[];
   title?: string;
 }
-
-// Function to fetch latest data directly from the component
-const fetchLatestData = async (): Promise<SensorData[]> => {
-  try {
-    const response = await fetch("/api/sensors?limit=1500");
-    if (!response.ok) {
-      throw new Error(`Error: ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error("Failed to fetch latest sensor data:", error);
-    return [];
-  }
-};
 
 const SensorDataTable = ({ 
   data: initialData, 
@@ -232,33 +218,15 @@ const SensorDataTable = ({
   };
 
   // Refresh function to fetch latest data
-  const refreshData = useCallback(async () => {
+  const refreshData = () => {
     setIsRefreshing(true);
     setError(null);
-    
-    try {
-      const freshData = await fetchLatestData();
-      if (freshData && freshData.length > 0) {
-        const sortedData = sortDataByTimestamp(freshData);
-        setData(sortedData);
-        setLastUpdated(new Date());
-      }
-    } catch (err) {
-      setError("Failed to refresh data. Please try again.");
-      console.error(err);
-    } finally {
+    window.setTimeout(() => {
+      setData(sortDataByTimestamp(initialData || []));
+      setLastUpdated(new Date());
       setIsRefreshing(false);
-    }
-  }, []);
-
-  // Auto refresh every 30 seconds
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      refreshData();
-    }, 30000);
-    
-    return () => clearInterval(intervalId);
-  }, [refreshData]);
+    }, 250);
+  };
   
   // Filter data when search term changes
   useEffect(() => {
