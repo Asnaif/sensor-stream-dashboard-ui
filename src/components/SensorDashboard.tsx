@@ -3,12 +3,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { SensorData, ChartPreference } from "@/types";
 import { sensorApi } from "@/services/api";
-import socketService from "@/services/socket";
-import { useToast } from "@/components/ui/use-toast";
 import { toast } from "sonner";
 import { getDateRangeOptions, formatDateISO } from "@/utils/datetime";
+import { createDemoSensorHistory } from "@/utils/demoSensorData";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import SensorChart from "./SensorChart";
@@ -22,10 +22,12 @@ import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 
 const dateRangeOptions = getDateRangeOptions();
+const demoSensorHistory = createDemoSensorHistory();
+const initialDemoReading = demoSensorHistory[demoSensorHistory.length - 1] ?? null;
 
 const SensorDashboard = () => {
-  const [latestData, setLatestData] = useState<SensorData | null>(null);
-  const [historicalData, setHistoricalData] = useState<SensorData[]>([]);
+  const [latestData, setLatestData] = useState<SensorData | null>(initialDemoReading);
+  const [historicalData, setHistoricalData] = useState<SensorData[]>(demoSensorHistory);
   const [selectedDateRange, setSelectedDateRange] = useState(dateRangeOptions[2]); // Last 7 days default
   const [expandedChart, setExpandedChart] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -36,11 +38,10 @@ const SensorDashboard = () => {
     new Date(selectedDateRange.end)
   );
   const [chartType, setChartType] = useState<'line' | 'bar' | 'area'>('line');
-  const [useSocketFallback, setUseSocketFallback] = useState<boolean>(false);
-  const [isSocketConnected, setIsSocketConnected] = useState<boolean>(false);
+  const [hasLiveLatestData, setHasLiveLatestData] = useState(false);
+  const [hasLiveHistoricalData, setHasLiveHistoricalData] = useState(false);
   const [dataRefreshKey, setDataRefreshKey] = useState<number>(0); // Added a key to force re-renders
   
-  const { toast: uiToast } = useToast();
   const { isAuthenticated } = useAuth();
   const { preferences } = usePreferences();
 
@@ -64,27 +65,11 @@ const SensorDashboard = () => {
           throw new Error(response.error || 'Failed to fetch latest sensor data');
         }
         
-        // API is working, no need for socket fallback
-        if (useSocketFallback) {
-          console.log('API working again, disabling socket fallback');
-          setUseSocketFallback(false);
-          
-          // Disconnect socket if it was being used
-          if (isSocketConnected) {
-            try {
-              socketService.disconnect();
-              setIsSocketConnected(false);
-            } catch (e) {
-              console.warn('Error disconnecting socket:', e);
-            }
-          }
-        }
-        
+        setHasLiveLatestData(true);
         return response.data;
       } catch (error) {
-        // API failed, enable socket fallback
-        console.warn('API failed, enabling socket fallback mode', error);
-        setUseSocketFallback(true);
+        setHasLiveLatestData(false);
+        console.warn('Latest API unavailable; keeping demo readings visible', error);
         throw error;
       }
     },
@@ -114,6 +99,7 @@ const SensorDashboard = () => {
         }
         
         console.log('Fetched all sensor data from API:', response.data.length, 'records');
+        setHasLiveHistoricalData(true);
         
         // Important: Sort data chronologically
         const sortedData = [...response.data].sort((a, b) => 
@@ -122,6 +108,7 @@ const SensorDashboard = () => {
         
         return sortedData;
       } catch (error) {
+        setHasLiveHistoricalData(false);
         console.warn('Failed to fetch historical data from API', error);
         throw error;
       }
@@ -182,14 +169,14 @@ const SensorDashboard = () => {
       );
       
       // If we have latest data that's not in the historical data, add it
-      if (latestData && latestData.temperature !== undefined) {
+      if (latestSensorData && latestSensorData.temperature !== undefined) {
         const latestExists = updatedHistoricalData.some(
-          item => item._id === latestData._id
+          item => item._id === latestSensorData._id
         );
         
         if (!latestExists) {
           // Place it at the end (chronologically most recent)
-          updatedHistoricalData.push(latestData);
+          updatedHistoricalData.push(latestSensorData);
         }
       }
       
@@ -206,86 +193,7 @@ const SensorDashboard = () => {
         });
       }
     }
-  }, [latestSensorData, allSensorData, latestData]);
-
-  // Socket fallback management - connect/disconnect based on API status
-  useEffect(() => {
-    // Check if we need to use socket fallback
-    const needsFallback = useSocketFallback || (isLatestDataError && isAllDataError);
-    
-    if (needsFallback && !isSocketConnected) {
-      // We need fallback and socket is not connected - connect it
-      console.log('API data unavailable, connecting to socket fallback service');
-      try {
-        socketService.connect();
-        setIsSocketConnected(true);
-      } catch (e) {
-        console.error('Failed to connect to socket service:', e);
-      }
-    } else if (!needsFallback && isSocketConnected) {
-      // We don't need fallback but socket is connected - disconnect it
-      console.log('API data available, disconnecting socket fallback service');
-      try {
-        socketService.disconnect();
-        setIsSocketConnected(false);
-      } catch (e) {
-        console.warn('Error disconnecting socket:', e);
-      }
-    }
-    
-    // Only set up socket listener if we're connected
-    if (isSocketConnected) {
-      const unsubscribe = socketService.onSensorUpdate((data) => {
-        console.log('Socket received data update (fallback mode):', data);
-        
-        if (data) {
-          // Validate data before using it
-          if (data.temperature !== undefined && data.humidity !== undefined && data.air_quality !== undefined) {
-            // Update latest data
-            if (!latestData || new Date(data.timestamp) > new Date(latestData.timestamp)) {
-              console.log('Updating latestData from socket with:', data);
-              setLatestData(data);
-            }
-            
-            // Add to historical data if not already present
-            setHistoricalData(prevData => {
-              const exists = prevData.some(item => item._id === data._id);
-              if (!exists) {
-                return [...prevData, data].sort((a, b) => 
-                  new Date(a.timestamp as string).getTime() - new Date(b.timestamp as string).getTime()
-                );
-              }
-              return prevData;
-            });
-          } else {
-            console.warn('Socket data has undefined values:', data);
-          }
-        }
-      });
-      
-      // Return cleanup function
-      return () => {
-        console.log('Cleaning up socket listener');
-        unsubscribe();
-      };
-    }
-    
-    return undefined;
-  }, [useSocketFallback, isLatestDataError, isAllDataError, isSocketConnected, latestData]);
-
-  // Disconnect socket on component unmount to prevent leaked connections
-  useEffect(() => {
-    return () => {
-      if (isSocketConnected) {
-        console.log('Component unmounting, disconnecting socket');
-        try {
-          socketService.disconnect();
-        } catch (e) {
-          console.warn('Error disconnecting socket on unmount:', e);
-        }
-      }
-    };
-  }, [isSocketConnected]);
+  }, [latestSensorData, allSensorData]);
 
   // Handle custom date range selection
   useEffect(() => {
@@ -306,7 +214,9 @@ const SensorDashboard = () => {
     if (!historicalData.length) return [];
     
     const startTimestamp = new Date(selectedDateRange.start).getTime();
-    const endTimestamp = new Date(selectedDateRange.end).getTime();
+    const endDateInclusive = new Date(selectedDateRange.end);
+    endDateInclusive.setHours(23, 59, 59, 999);
+    const endTimestamp = endDateInclusive.getTime();
     
     const filtered = historicalData.filter(item => {
       const itemTimestamp = new Date(item.timestamp as string).getTime();
@@ -397,11 +307,9 @@ const SensorDashboard = () => {
 
   // Important: Make sure we always have access to the latest data for display
   const isLoading = isLatestDataLoading && isAllDataLoading && historicalData.length === 0;
+  const isDemoMode = !hasLiveLatestData || !hasLiveHistoricalData;
   
-  // Show data source indicator for user awareness
-  const dataSourceIndicator = isSocketConnected 
-    ? "Using socket fallback (mock data)" 
-    : "Using API data";
+  const dataSourceIndicator = isDemoMode ? "Demo data" : "Live API data";
     
   // Debug information about current data
   console.log('Current data state:', { 
@@ -429,11 +337,9 @@ const SensorDashboard = () => {
                     ({historicalData.length} records)
                   </span>
                 )}
-                {isSocketConnected && (
-                  <span className="ml-2 text-xs text-amber-500 font-semibold">
-                    {dataSourceIndicator}
-                  </span>
-                )}
+                <Badge variant={isDemoMode ? "secondary" : "outline"} className="ml-2">
+                  {dataSourceIndicator}
+                </Badge>
               </CardDescription>
             </div>
             
@@ -587,30 +493,6 @@ const SensorDashboard = () => {
         currentSettings={getCurrentChartSettings()}
       />
       
-      {/* DEBUG: Add a debug panel for development */}
-      {process.env.NODE_ENV === 'development' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Debug Panel</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xs font-mono overflow-auto max-h-[300px] p-2 bg-gray-100 rounded">
-              <div>Data source: {dataSourceIndicator}</div>
-              <div>Socket connected: {isSocketConnected ? 'Yes' : 'No'}</div>
-              <div>Latest data: {latestData ? JSON.stringify({
-                temperature: latestData.temperature,
-                humidity: latestData.humidity,
-                air_quality: latestData.air_quality,
-                timestamp: latestData.timestamp
-              }) : 'null'}</div>
-              <div>Historical data count: {historicalData.length}</div>
-              <div>Filtered data count: {filteredData.length}</div>
-              <div>Date range: {selectedDateRange.start} to {selectedDateRange.end}</div>
-              <div>API status: Latest={isLatestDataError ? 'Error' : 'OK'}, Historical={isAllDataError ? 'Error' : 'OK'}</div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };
