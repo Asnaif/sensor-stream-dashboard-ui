@@ -8,7 +8,7 @@ import { SensorData, ChartPreference } from "@/types";
 import { sensorApi } from "@/services/api";
 import { toast } from "sonner";
 import { getDateRangeOptions, formatDateISO } from "@/utils/datetime";
-import { createDemoSensorHistory } from "@/utils/demoSensorData";
+import { createDemoReading, createDemoSensorHistory } from "@/utils/demoSensorData";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import SensorChart from "./SensorChart";
@@ -194,6 +194,23 @@ const SensorDashboard = () => {
       }
     }
   }, [latestSensorData, allSensorData]);
+
+  // Keep the demo dashboard moving at the same cadence as the ESP32 feed.
+  useEffect(() => {
+    if (!isLatestDataError) return undefined;
+
+    let demoIndex = demoSensorHistory.length;
+    const addDemoReading = () => {
+      const reading = createDemoReading(new Date(), demoIndex);
+      demoIndex += 1;
+      setLatestData(reading);
+      setHistoricalData((current) => [...current, reading].slice(-1000));
+    };
+
+    addDemoReading();
+    const intervalId = window.setInterval(addDemoReading, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [isLatestDataError]);
 
   // Handle custom date range selection
   useEffect(() => {
